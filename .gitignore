@@ -1,0 +1,6 @@
+.env
+script.py
+context.md
+__pycache__/
+*.pyc
+uvicorn.log

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Text-to-SQL</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f5f5f5;
+    --panel: #ffffff;
+    --text: #1a1a1a;
+    --muted: #666;
+    --border: #ddd;
+    --accent: #2563eb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111;
+      --panel: #1a1a1a;
+      --text: #eee;
+      --muted: #999;
+      --border: #333;
+      --accent: #4f8fff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 3rem 1rem;
+  }
+  main {
+    width: 100%;
+    max-width: 640px;
+  }
+  h1 {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 1.5rem;
+  }
+  form {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+  }
+  input[type=text] {
+    flex: 1;
+    padding: 0.65rem 0.8rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--text);
+    font-size: 0.95rem;
+  }
+  input[type=text]:focus { outline: 2px solid var(--accent); }
+  button {
+    padding: 0.65rem 1.2rem;
+    border: none;
+    border-radius: 6px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 0.95rem;
+    cursor: pointer;
+  }
+  button:disabled { opacity: 0.6; cursor: default; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 1rem 1.2rem;
+    margin-bottom: 1rem;
+  }
+  .label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    margin-bottom: 0.4rem;
+  }
+  pre {
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.85rem;
+    margin: 0;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+  }
+  td {
+    padding: 0.3rem 0.5rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .badge {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .badge-high { background: #16a34a33; color: #16a34a; }
+  .badge-medium { background: #ca8a0433; color: #ca8a04; }
+  .badge-low { background: #dc262633; color: #dc2626; }
+  .muted { color: var(--muted); font-size: 0.85rem; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Text-to-SQL</h1>
+
+  <form id="ask-form">
+    <input type="text" id="question" placeholder="Ask a question about the database..." autocomplete="off" required>
+    <button type="submit" id="submit-btn">Ask</button>
+  </form>
+
+  <div id="output"></div>
+</main>
+
+<script>
+const API_URL = "http://127.0.0.1:8002/ask";
+
+const form = document.getElementById("ask-form");
+const questionInput = document.getElementById("question");
+const submitBtn = document.getElementById("submit-btn");
+const output = document.getElementById("output");
+
+function badgeClass(level) {
+  if (level === "HIGH") return "badge-high";
+  if (level === "MEDIUM") return "badge-medium";
+  return "badge-low";
+}
+
+function renderResults(results) {
+  if (!results || results.length === 0) {
+    return '<p class="muted">No rows returned.</p>';
+  }
+  const rows = results.map(row =>
+    `<tr>${row.map(cell => `<td>${cell}</td>`).join("")}</tr>`
+  ).join("");
+  return `<table>${rows}</table>`;
+}
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const question = questionInput.value.trim();
+  if (!question) return;
+
+  submitBtn.disabled = true;
+  submitBtn.textContent = "Thinking...";
+  output.innerHTML = '<p class="muted">Generating SQL...</p>';
+
+  try {
+    const res = await fetch(API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question })
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      output.innerHTML = `<div class="panel"><div class="label">Error</div><pre>${res.status}: ${errText}</pre></div>`;
+      return;
+    }
+
+    const data = await res.json();
+
+    if (!data.is_safe) {
+      const preview = data.preview;
+      const previewLine = preview
+        ? `<p class="muted" style="margin-top:0.5rem">Sandbox preview (real database untouched): ${preview.effect}</p>`
+        : "";
+      output.innerHTML = `
+        <div class="panel">
+          <div class="label">Generated SQL (blocked)</div>
+          <pre>${data.sql}</pre>
+        </div>
+        <div class="panel">
+          <span class="badge badge-low">BLOCKED</span>
+          <p class="muted" style="margin-top:0.5rem">This query failed the safety check and was not run against the real database.</p>
+          ${previewLine}
+        </div>`;
+      return;
+    }
+
+    output.innerHTML = `
+      <div class="panel">
+        <div class="label">Generated SQL</div>
+        <pre>${data.sql}</pre>
+      </div>
+      <div class="panel">
+        <div class="label">Results</div>
+        ${renderResults(data.results)}
+      </div>
+      <div class="panel">
+        <span class="badge ${badgeClass(data.confidence)}">${data.confidence}</span>
+        <p class="muted" style="margin-top:0.5rem">${data.reason}</p>
+      </div>`;
+  } catch (err) {
+    output.innerHTML = `<div class="panel"><div class="label">Error</div><pre>${err.message}\n\nIs the API running at ${API_URL}?</pre></div>`;
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = "Ask";
+  }
+});
+</script>
+</body>
+</html>

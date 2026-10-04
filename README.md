@@ -41,11 +41,15 @@ question --> Gemini generates SQL --> structural safety check
 ## Project structure
 
 ```
-main2.py       FastAPI backend — the whole pipeline above
-index.html     Single-page vanilla JS frontend
-prompt.py      System prompt for SQL generation
-Database.sqlite  Sample SQLite database
-requirements.txt
+backend/
+  main2.py          FastAPI backend — the whole pipeline above
+  prompt.py         System prompt for SQL generation
+  requirements.txt
+  .env              Gemini API key (not committed)
+frontend/
+  index.html        Single-page vanilla JS frontend
+data/
+  Database.sqlite   Sample SQLite database
 ```
 
 ## Setup
@@ -53,12 +57,12 @@ requirements.txt
 **1. Install dependencies**
 
 ```bash
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 ```
 
 **2. Add your Gemini API key**
 
-Create a `.env` file in the project root:
+Create a `.env` file in `backend/`:
 
 ```
 GOOGLE_API_KEY=your_key_here
@@ -67,6 +71,7 @@ GOOGLE_API_KEY=your_key_here
 **3. Run the backend**
 
 ```bash
+cd backend
 python main2.py
 ```
 
@@ -74,7 +79,7 @@ The API starts at `http://127.0.0.1:8002`.
 
 **4. Open the frontend**
 
-Open `index.html` directly in a browser. It talks to the API at `127.0.0.1:8002` by default.
+Open `frontend/index.html` directly in a browser. It talks to the API at `127.0.0.1:8002` by default.
 
 ## API
 

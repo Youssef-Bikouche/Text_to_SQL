@@ -12,8 +12,10 @@ import sqlglot.expressions as exp
 from dotenv import load_dotenv
 from google import genai
 
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "Database.sqlite")
+
 def connectionDB():
-    connection = sqlite3.connect('Database.sqlite', check_same_thread=False)
+    connection = sqlite3.connect(DB_PATH, check_same_thread=False)
     print("connnection status : ", connection)
     pointer = connection.cursor()
     tables = pointer.execute("SELECT name FROM sqlite_master WHERE type='table';").fetchall()
@@ -69,17 +71,9 @@ def check_columns_real(sql, real_columns):
             print(f"  hallucination: '{col}' is not a real column")
             return False
     return True
-# real guardrail #3: does the query actually execute without erroring?
-def check_runs_clean(sql, pointer):
-    try:
-        pointer.execute(sql)
-        pointer.fetchall()
-        return True
-    except Exception:
-        return False
-def confidence_score(sql, question, results, real_columns, pointer, client):
+def confidence_score(sql, question, results, real_columns, client):
     columns_ok = check_columns_real(sql, real_columns)   # signal 1 (strong, deterministic)
-    runs_ok = check_runs_clean(sql, pointer)             # signal 2 (strong, deterministic)
+    # signal 2 (query already ran clean in ask() before this was called, so no need to re-run it here)
 
     judge_prompt = f"""Does this SQL result answer the question? Reply only YES or NO.
 Question: {question}
@@ -88,8 +82,8 @@ Results: {results}"""
     judge = client.models.generate_content(model="gemini-3.6-flash", contents=judge_prompt)
     judge_ok = "YES" in judge.text.upper()               # signal 3 (weak, AI vote)
 
-    if not columns_ok or not runs_ok:
-        return "LOW", "A hard check failed (fake column or query error)."
+    if not columns_ok:
+        return "LOW", "A hard check failed (fake column reference)."
     if judge_ok:
         return "HIGH", "All checks passed and the judge agrees."
     return "MEDIUM", "Checks passed but the judge was unsure."
@@ -111,7 +105,7 @@ def is_safe_sql(sql):
 # runs a blocked query against a throwaway COPY of the database, never the real one
 def preview_blocked_query(sql):
     tmp_path = tempfile.mktemp(suffix=".sqlite")
-    shutil.copy("Database.sqlite", tmp_path)
+    shutil.copy(DB_PATH, tmp_path)
 
     try:
         sandbox_connection = sqlite3.connect(tmp_path)
@@ -160,11 +154,11 @@ def ask(request: AskRequest):
     results = pointer.fetchall()
 
     # score it
-    level, reason = confidence_score(ai_query, question, results, real_columns, pointer, client)
+    level, reason = confidence_score(ai_query, question, results, real_columns, client)
 
     return {"question": question, "sql": ai_query, "is_safe": True,
             "results": results, "confidence": level, "reason": reason}
 
 #=======================================================
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8002)
+    uvicorn.run(app, host="0.0.0.0", port=8002)

@@ -1,4 +1,0 @@
-pip install google-genai python-dotenv
-pip install sqlglot
-fastapi
-uvicorn
